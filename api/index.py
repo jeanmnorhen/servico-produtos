@@ -76,6 +76,9 @@ def publish_event(topic, event_type, product_id, data, changes=None):
 
 @app.route("/api/products", methods=["POST", "OPTIONS"])
 def create_product():
+    if request.method == 'OPTIONS':
+        return '', 204
+
     if not db:
         return jsonify({"error": "Dependência do Firestore não inicializada."}), 503
 
