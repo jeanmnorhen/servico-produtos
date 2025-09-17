@@ -82,6 +82,25 @@ def publish_event(topic, event_type, product_id, data, changes=None):
     except Exception as e:
         print(f"Erro ao publicar evento Kafka: {e}")
 
+@app.route('/api/products', methods=['GET'])
+def list_all_products():
+    if not db:
+        return jsonify({"error": "Dependência do Firestore não inicializada."}), 503
+
+    try:
+        products_ref = db.collection('products')
+        docs = products_ref.stream()
+        
+        all_products = []
+        for doc in docs:
+            product_data = doc.to_dict()
+            product_data['id'] = doc.id
+            all_products.append(product_data)
+            
+        return jsonify({"products": all_products}), 200
+    except Exception as e:
+        return jsonify({"error": f"Erro ao listar produtos: {e}"}), 500
+
 @app.route("/api/products", methods=["POST", "OPTIONS"])
 def create_product():
     if request.method == 'OPTIONS':
