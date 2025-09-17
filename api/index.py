@@ -11,6 +11,10 @@ import base64
 app = Flask(__name__)
 CORS(app)
 
+# --- Variáveis globais para erros de inicialização ---
+firebase_init_error = None
+kafka_producer_init_error = None
+
 # --- Inicialização do Firebase Admin SDK ---
 # Tenta carregar as credenciais a partir da variável Base64
 firebase_sdk_cred_base64 = os.environ.get('FIREBASE_ADMIN_SDK_BASE64')
@@ -25,9 +29,11 @@ if firebase_sdk_cred_base64:
         db = firestore.client()
         print("Firebase Admin SDK inicializado com sucesso a partir do Base64.")
     except Exception as e:
+        firebase_init_error = str(e)
         print(f"Erro ao inicializar o Firebase Admin SDK a partir do Base64: {e}")
 else:
-    print("Variável de ambiente FIREBASE_ADMIN_SDK_BASE64 não encontrada.")
+    firebase_init_error = "Variável de ambiente FIREBASE_ADMIN_SDK_BASE64 não encontrada."
+    print(firebase_init_error)
 
 # --- Configuração do Kafka Producer ---
 producer = None
@@ -43,8 +49,10 @@ try:
         producer = Producer(kafka_conf)
         print("Produtor Kafka inicializado com sucesso.")
     else:
-        print("Variáveis de ambiente do Kafka não encontradas para o producer.")
+        kafka_producer_init_error = "Variáveis de ambiente do Kafka não encontradas para o producer."
+        print(kafka_producer_init_error)
 except Exception as e:
+    kafka_producer_init_error = str(e)
     print(f"Erro ao inicializar Produtor Kafka: {e}")
 
 def delivery_report(err, msg):
@@ -205,9 +213,7 @@ def delete_product(product_id):
     except Exception as e:
         return jsonify({"error": f"Erro ao deletar produto: {e}"}), 500
 
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    # Verifica a presença das variáveis de ambiente
+def get_health_status():
     env_vars = {
         "FIREBASE_ADMIN_SDK_BASE64": "present" if os.environ.get('FIREBASE_ADMIN_SDK_BASE64') else "missing",
         "KAFKA_BOOTSTRAP_SERVER": "present" if os.environ.get('KAFKA_BOOTSTRAP_SERVER') else "missing",
@@ -215,18 +221,25 @@ def health_check():
         "KAFKA_API_SECRET": "present" if os.environ.get('KAFKA_API_SECRET') else "missing"
     }
 
-    # Monta o status final
     status = {
         "environment_variables": env_vars,
         "dependencies": {
             "firestore": "ok" if db else "error",
             "kafka_producer": "ok" if producer else "error"
+        },
+        "initialization_errors": {
+            "firestore": firebase_init_error,
+            "kafka_producer": kafka_producer_init_error
         }
     }
+    return status
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    status = get_health_status()
     
-    # Determina o código de status HTTP geral
     all_ok = (
-        all(value == "present" for value in env_vars.values()) and
+        all(value == "present" for value in status["environment_variables"].values()) and
         status["dependencies"]["firestore"] == "ok" and
         status["dependencies"]["kafka_producer"] == "ok"
     )
